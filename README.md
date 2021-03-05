@@ -337,3 +337,111 @@ Run container to test the image:
 ```
 docker container run --rm --detach --name custom-nginx-built --publish 8080:80 custom-nginx:built
 ```
+
+---
+### Optimize Docker Images
+---   
+
+Remove unnecessary files after installation, keep them in single RUN command so they will not be included in any layer.   
+Updated Dockerfile:
+```
+FROM ubuntu:latest
+
+EXPOSE 80
+
+ARG FILENAME="nginx-1.19.2"
+ARG EXTENSION="tar.gz"
+
+ADD https://nginx.org/download/${FILENAME}.${EXTENSION} .
+
+RUN apt-get update && \
+    apt-get install build-essential \ 
+                    libpcre3 \
+                    libpcre3-dev \
+                    zlib1g \
+                    zlib1g-dev \
+                    libssl-dev \
+                    -y && \
+    tar -xvf ${FILENAME}.${EXTENSION} && rm ${FILENAME}.${EXTENSION} && \
+    cd ${FILENAME} && \
+    ./configure \
+        --sbin-path=/usr/bin/nginx \
+        --conf-path=/etc/nginx/nginx.conf \
+        --error-log-path=/var/log/nginx/error.log \
+        --http-log-path=/var/log/nginx/access.log \
+        --with-pcre \
+        --pid-path=/var/run/nginx.pid \
+        --with-http_ssl_module && \
+    make && make install && \
+    cd / && rm -rfv /${FILENAME} && \
+    apt-get remove build-essential \ 
+                    libpcre3-dev \
+                    zlib1g-dev \
+                    libssl-dev \
+                    -y && \
+    apt-get autoremove -y && \
+    apt-get clean && rm -rf /var/lib/apt/lists/*
+
+CMD ["nginx", "-g", "daemon off;"]
+```
+The image size has gone from being 343MB to 81.6MB. The official image is 133MB. This is a pretty optimized build, but we can go a bit further using Alpine Linux.    
+
+---
+### Alpine Linux
+---   
+Where the latest ubuntu image weighs at around 28MB, alpine linux is 2.8MB.  
+Apart from the lightweight nature, Alpine is also secure and is a much better fit for creating containers than the other distributions.
+      
+Updated Dockerfile for building NGINX with Alpine Linux
+```
+FROM alpine:latest
+
+EXPOSE 80
+
+ARG FILENAME="nginx-1.19.2"
+ARG EXTENSION="tar.gz"
+
+ADD https://nginx.org/download/${FILENAME}.${EXTENSION} .
+
+RUN apk add --no-cache pcre zlib && \
+    apk add --no-cache \
+            --virtual .build-deps \
+            build-base \ 
+            pcre-dev \
+            zlib-dev \
+            openssl-dev && \
+    tar -xvf ${FILENAME}.${EXTENSION} && rm ${FILENAME}.${EXTENSION} && \
+    cd ${FILENAME} && \
+    ./configure \
+        --sbin-path=/usr/bin/nginx \
+        --conf-path=/etc/nginx/nginx.conf \
+        --error-log-path=/var/log/nginx/error.log \
+        --http-log-path=/var/log/nginx/access.log \
+        --with-pcre \
+        --pid-path=/var/run/nginx.pid \
+        --with-http_ssl_module && \
+    make && make install && \
+    cd / && rm -rfv /${FILENAME} && \
+    apk del .build-deps
+
+CMD ["nginx", "-g", "daemon off;"]
+```
+---
+### Sharing Docker Images Online
+---
+Login to Docker with ``` docker login ``` via cmd.   
+In order to share an image online, the image has to be tagged.
+```
+--tag <image repository>:<image tag>
+
+docker image build --tag mariourban83/custom-nginx:latest --file Dockerfile .
+```
+The image name can be anything and can not be changed once the image is uploaded. The tag can be changed whenever needed and usually reflects the version of the software or different kind of build.   
+
+Once the image has been built, it can be uploaded by executing the following command:
+```
+docker image push <image repository>:<image tag>
+
+docker image push mariourban83/custom-nginx:latest
+```
+Once it's done, the image should be visible in user DockerHub profile page.
