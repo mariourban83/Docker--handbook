@@ -180,3 +180,160 @@ docker run -d \
   ```
 If you use --mount to bind-mount a file or directory that does not yet exist on the Docker host, Docker does not automatically create it for you, but generates an error.
 
+---
+## Docker Image Manipulation Basics
+---
+
+Images are multi-layered self-contained files that act as the template for creating Docker containers.
+To perform an image build, the daemon needs two very specific pieces of information. These are the name of the Dockerfile and the build context. 
+
+To create Dockerfile:
+```
+FROM ubuntu:latest
+
+EXPOSE 80
+
+RUN apt-get update && \
+    apt-get install nginx -y && \
+    apt-get clean && rm -rf /var/lib/apt/lists/*
+
+CMD ["nginx", "-g", "daemon off;"]
+```
+After that:
+```
+docker image build .
+``` 
+
+- docker image build is the command for building the image. The daemon finds any file named Dockerfile within the context.
+- The . at the end sets the context for this build. The context means the directory accessible by the daemon during the build process.
+
+To run created container:
+```
+docker container run --rm --detach --name custom-nginx-packaged --publish 8080:80 < container ID >
+```
+---
+### Tag Docker images
+---
+Just like containers, you can assign custom identifiers to your images instead of relying on the randomly generated ID. In case of an image, it's called tagging instead of naming. The --tag or -t option is used in such cases.
+```
+--tag <image repository>:<image tag>
+docker image build --tag custom-nginx:packaged .
+```
+Example: If you want to run a container using a specific version of MySQL, like 5.7, you can execute 'docker container run mysql:5.7' where mysql is the image repository and 5.7 is the tag.   
+
+---
+### List and Remove Docker Images
+---
+Just like the container ls command, you can use the image ls command to list all the images in your local system:
+```
+docker image ls
+```
+Images listed can be then deleted using the image rm command. The generic syntax is as follows:
+```
+docker image rm <image identifier>
+docker image rm custom-nginx:packaged
+```
+Also the 'image prune' command can be used to cleanup all un-tagged dangling images as follows:
+```
+docker image prune --force
+```
+---
+### Layers of a Docker Image
+---
+Images are multi-layered files. To visualize the many layers of an image, you can use the image history command. The various layers of the custom-nginx:packaged image can be visualized as follows:
+```
+docker image history custom-nginx:packaged
+```
+Image comprises of many read-only layers, each recording a new set of changes to the state triggered by certain instructions. When you start a container using an image, you get a new writable layer on top of the other layers. By utilizing this concept, Docker can avoid data duplication and can use previously created layers as a cache for later builds. This results in compact, efficient images that can be used everywhere.
+
+---
+## EXAMPLE : Build NGINX from Source
+---
+The image creation process this time can be done in seven steps. These are as follows:
+
+- Get a good base image for building the application, like ubuntu.
+- Install necessary build dependencies on the base image.
+- Copy the nginx-1.19.2.tar.gz file inside the image.
+- Extract the contents of the archive and get rid of it.
+- Configure the build, compile and install the program using the make tool.
+- Get rid of the extracted source code.
+- Run nginx executable.
+
+Dockerfile:
+```
+FROM ubuntu:latest
+
+RUN apt-get update && \
+    apt-get install build-essential\ 
+                    libpcre3 \
+                    libpcre3-dev \
+                    zlib1g \
+                    zlib1g-dev \
+                    libssl-dev \
+                    -y && \
+    apt-get clean && rm -rf /var/lib/apt/lists/*
+
+COPY nginx-1.19.2.tar.gz .
+
+RUN tar -xvf nginx-1.19.2.tar.gz && rm nginx-1.19.2.tar.gz
+
+RUN cd nginx-1.19.2 && \
+    ./configure \
+        --sbin-path=/usr/bin/nginx \
+        --conf-path=/etc/nginx/nginx.conf \
+        --error-log-path=/var/log/nginx/error.log \
+        --http-log-path=/var/log/nginx/access.log \
+        --with-pcre \
+        --pid-path=/var/run/nginx.pid \
+        --with-http_ssl_module && \
+    make && make install
+
+RUN rm -rf /nginx-1.19.2
+
+CMD ["nginx", "-g", "daemon off;"]
+```
+Now to build this image:
+```
+docker image build --tag custom-nginx:built .
+```
+Updated Dockerfile with ARG and ADD
+```
+FROM ubuntu:latest
+
+RUN apt-get update && \
+    apt-get install build-essential\ 
+                    libpcre3 \
+                    libpcre3-dev \
+                    zlib1g \
+                    zlib1g-dev \
+                    libssl-dev \
+                    -y && \
+    apt-get clean && rm -rf /var/lib/apt/lists/*
+
+ARG FILENAME="nginx-1.19.2"
+ARG EXTENSION="tar.gz"
+
+ADD https://nginx.org/download/${FILENAME}.${EXTENSION} .
+
+RUN tar -xvf ${FILENAME}.${EXTENSION} && rm ${FILENAME}.${EXTENSION}
+
+RUN cd ${FILENAME} && \
+    ./configure \
+        --sbin-path=/usr/bin/nginx \
+        --conf-path=/etc/nginx/nginx.conf \
+        --error-log-path=/var/log/nginx/error.log \
+        --http-log-path=/var/log/nginx/access.log \
+        --with-pcre \
+        --pid-path=/var/run/nginx.pid \
+        --with-http_ssl_module && \
+    make && make install
+
+RUN rm -rf /${FILENAME}}
+
+CMD ["nginx", "-g", "daemon off;"]
+```
+The ARG instruction allows to declare variables like in other languages. These variables or arguments can later be accessed using the ${argument name} syntax.   
+Run container to test the image:
+```
+docker container run --rm --detach --name custom-nginx-built --publish 8080:80 custom-nginx:built
+```
