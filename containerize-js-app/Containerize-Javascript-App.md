@@ -60,3 +60,61 @@ docker container run \
     containerize-js-app:dev  
 ```   
 Here, Docker will take the entire node_modules directory from inside the container and tuck it away in some other directory managed by the Docker daemon on your host file system and will mount that directory as node_modules inside the container.
+
+---
+### Multi-Staged Builds in Docker
+---
+In development mode the ```npm run``` serve command starts a development server that serves the application to the user. That server not only serves the files but also provides the hot reload feature.
+
+In production mode, the ```npm run build``` command compiles all your JavaScript code into some static HTML, CSS, and JavaScript files. To run these files you don't need node or any other runtime dependencies. All you need is a server like nginx for example.
+
+- Use node image as the base and build the application.
+- Copy the files created using the node image to an nginx image.
+- Create the final image based on nginx and discard all node related stuff.
+
+This way your image only contains the files that are needed and becomes really handy.
+
+This approach is a multi-staged build. 
+
+Create new Dockerfile:
+```
+FROM node:lts-alpine as builder
+
+WORKDIR /app
+
+COPY ./package.json ./
+RUN npm install
+
+COPY . .
+RUN npm run build
+
+FROM nginx:stable-alpine
+
+EXPOSE 80
+
+COPY --from=builder /app/dist /usr/share/nginx/html
+```
+run the container with 
+```
+docker container run \
+    --rm \
+    --detach \
+    --name hello-dock-prod \
+    --publish 8080:80 \
+    hello-dock:prod
+```
+The running application should be available on http://127.0.0.1:8080 
+
+Multi-staged builds can be very useful if you're building large applications with a lot of dependencies. If configured properly, images built in multiple stages can be very optimized and compact.
+
+---
+### Ignoring Unnecessary files with ```.dockerignore```
+---
+The ```.dockerignore``` file contains a list of files and directories to be excluded from image builds.
+```
+.git
+*Dockerfile*
+*docker-compose*
+node_modules
+```
+This ```.dockerignore``` file has to be in the build context. Files and directories mentioned here will be ignored by the COPY instruction. But if you do a bind mount, the .dockerignore file will have no effect. 
