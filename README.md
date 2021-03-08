@@ -445,3 +445,12 @@ docker image push <image repository>:<image tag>
 docker image push mariourban83/custom-nginx:latest
 ```
 Once it's done, the image should be visible in user DockerHub profile page.
+
+---   
+
+For Educational purposes only.   
+
+Author : Farhan Hasin Chowdhury    
+
+Original content website:    
+```https://www.freecodecamp.org/news/the-docker-handbook/```
